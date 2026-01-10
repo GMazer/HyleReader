@@ -1,0 +1,5 @@
+{
+  "name": "Hyle Reader",
+  "description": "An elegant book management application to organize your library, track reading progress, and use AI to categorize and summarize your books.",
+  "requestFramePermissions": []
+}

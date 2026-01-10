@@ -1,0 +1,83 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lumiere Reader - AI Insight</title>
+    
+    <!-- Tailwind CSS (Dùng CDN cho nhanh, hoặc bạn có thể setup npm standard) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- PDF.js & Epub.js Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
+    
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              serif: ['Bookerly', 'Merriweather', 'Georgia', 'serif'],
+              sans: ['Inter', 'sans-serif'],
+              mono: ['Fira Code', 'monospace'],
+            },
+            colors: {
+              sepia: {
+                50: '#fbf0d9',
+                100: '#f7e8c3',
+                900: '#5f4b32',
+              }
+            }
+          }
+        }
+      }
+      // Cấu hình Worker cho PDF.js
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,400&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&display=swap" rel="stylesheet">
+    
+    <style>
+        @font-face {
+            font-family: 'Bookerly';
+            src: local('Bookerly'), local('Bookerly Regular'), url('https://cdn.jsdelivr.net/gh/cw1427/fonts/Bookerly/Bookerly-Regular.woff2') format('woff2');
+            font-weight: 400;
+            font-style: normal;
+        }
+        
+        body { font-family: 'Inter', sans-serif; transition: background-color 0.3s ease; }
+        .insight-content h1 { font-size: 2.5rem; font-weight: 800; line-height: 1.2; margin-bottom: 1.5rem; }
+        .insight-content h2 { font-size: 1.5rem; font-weight: 700; color: #6366f1; margin-top: 2rem; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .insight-content blockquote { border-left: 4px solid #6366f1; padding-left: 1.5rem; font-style: italic; font-size: 1.25rem; margin: 2rem 0; color: #94a3b8; }
+        .dark .insight-content blockquote { color: #cbd5e1; }
+        .insight-content p { line-height: 1.8; margin-bottom: 1.25rem; font-size: 1.1rem; }
+        .step-circle { width: 28px; height: 28px; background: #6366f1; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; }
+        
+        /* Custom Scrollbar */
+        .reader-scroll::-webkit-scrollbar { width: 8px; }
+        .reader-scroll::-webkit-scrollbar-track { background: transparent; }
+        .reader-scroll::-webkit-scrollbar-thumb { background-color: rgba(156, 163, 175, 0.5); border-radius: 4px; }
+        .reader-scroll::-webkit-scrollbar-thumb:hover { background-color: rgba(156, 163, 175, 0.8); }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "firebase/": "https://esm.sh/firebase@^12.7.0/",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0"
+  }
+}
+</script>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+    <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
+</body>
+</html>
