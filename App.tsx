@@ -1,19 +1,22 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Search, Book as BookIcon, Filter, Layers, Import, Loader2, Sparkles, Sun, Moon, FileText, Upload, X, LogIn, LogOut, User, AlertTriangle, Copy, Check } from 'lucide-react';
+import { Plus, Search, Book as BookIcon, Layers, Loader2, Sparkles, Sun, Moon, FileText, Upload, X, LogOut, Trash2, Github } from 'lucide-react';
 import { Book, BookStatus, Chapter } from './types';
 import { analyzeBook } from './geminiService';
 import BookCard from './components/BookCard';
 import Reader from './components/Reader';
-import { auth, googleProvider } from './firebaseConfig';
-import { signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { addBookToFirebase, getUserBooks, updateBookInFirebase, deleteBookFromFirebase, fetchTextFromStorage } from './firebaseService';
+import { getAllBooks, saveBook, deleteBook, getBookById } from './db';
+import { auth } from './firebaseConfig';
+import { loginWithGoogle, logoutUser } from './firebaseService';
+import { onAuthStateChanged, User } from 'firebase/auth';
 
 declare const pdfjsLib: any;
-declare const ePub: any; // Khai báo ePub từ thư viện global
+declare const ePub: any; 
 
 const App: React.FC = () => {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
   const [books, setBooks] = useState<Book[]>([]);
   const [isLoadingBooks, setIsLoadingBooks] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -21,7 +24,6 @@ const App: React.FC = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [readingBook, setReadingBook] = useState<Book | null>(null);
-  const [isLoadingContent, setIsLoadingContent] = useState(false); // Loading state khi mở sách
   const [importStatus, setImportStatus] = useState<string>(''); 
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -35,12 +37,13 @@ const App: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auth Listener
+  // 1. Check Auth State
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      setIsAuthLoading(false);
       if (currentUser) {
-        loadBooks();
+        loadBooks(currentUser.uid);
       } else {
         setBooks([]);
       }
@@ -48,29 +51,16 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  const loadBooks = async () => {
+  const loadBooks = async (userId: string) => {
     setIsLoadingBooks(true);
     try {
-      const data = await getUserBooks();
+      const data = await getAllBooks(userId);
       setBooks(data);
     } catch (error) {
-      console.error("Failed to load books", error);
+      console.error("Failed to load books from DB", error);
     } finally {
       setIsLoadingBooks(false);
     }
-  };
-
-  const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error: any) {
-      console.error("Login failed", error);
-      alert(`Đăng nhập thất bại: ${error.message}`);
-    }
-  };
-
-  const handleLogout = async () => {
-    await signOut(auth);
   };
 
   useEffect(() => {
@@ -97,23 +87,25 @@ const App: React.FC = () => {
     });
   }, [books, searchTerm, filterCategory]);
 
+  const handleLogout = async () => {
+    await logoutUser();
+  };
+
+  // --- PDF & EPUB Extraction Logic (Giữ nguyên) ---
   const extractTextFromPdf = async (file: File): Promise<{ text: string, coverUrl: string | null }> => {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     
-    // --- Logic trích xuất ảnh bìa từ trang 1 ---
     let coverUrl: string | null = null;
     try {
         setImportStatus('Đang tạo ảnh bìa từ PDF...');
         const page1 = await pdf.getPage(1);
-        const scale = 1.5; // Scale lớn hơn chút để ảnh rõ nét
+        const scale = 1.5; 
         const viewport = page1.getViewport({ scale });
-        
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
         canvas.height = viewport.height;
         canvas.width = viewport.width;
-
         if (context) {
             await page1.render({ canvasContext: context, viewport: viewport }).promise;
             coverUrl = canvas.toDataURL('image/jpeg', 0.8);
@@ -121,10 +113,8 @@ const App: React.FC = () => {
     } catch (e) {
         console.warn("Lỗi tạo ảnh bìa PDF:", e);
     }
-    // ------------------------------------------
 
     let fullText = "";
-    
     for (let i = 1; i <= pdf.numPages; i++) {
       setImportStatus(`Đang đọc trang ${i}/${pdf.numPages} (PDF)...`);
       const page = await pdf.getPage(i);
@@ -132,60 +122,7 @@ const App: React.FC = () => {
       const strings = content.items.map((item: any) => item.str);
       fullText += strings.join(" ") + "\n\n";
     }
-    
     return { text: fullText, coverUrl };
-  };
-
-  const extractTextFromDoc = (doc: Document): string => {
-    let text = "";
-    
-    // Helper duyệt DOM đệ quy
-    const walk = (node: Node) => {
-      if (node.nodeType === 3) { // Node.TEXT_NODE
-        const val = node.nodeValue?.trim();
-        if (val) text += val + " ";
-      } else if (node.nodeType === 1) { // Node.ELEMENT_NODE
-        const el = node as Element;
-        const tagName = el.tagName.toLowerCase();
-        
-        // Bỏ qua Metadata và Script
-        if (['head', 'script', 'style', 'svg', 'meta', 'link', 'noscript'].includes(tagName)) return;
-
-        // Các thẻ block tạo dòng mới
-        const blockElements = ['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'br', 'hr', 'blockquote', 'section', 'article', 'header', 'footer', 'title', 'tr', 'td'];
-        
-        if (tagName === 'br') text += "\n";
-        
-        // Xử lý ảnh
-        if (tagName === 'img') {
-             const alt = el.getAttribute('alt');
-             if (alt) text += `[Ảnh: ${alt}] `;
-        }
-
-        // Duyệt con
-        for (let i = 0; i < node.childNodes.length; i++) {
-          walk(node.childNodes[i]);
-        }
-        
-        if (blockElements.includes(tagName)) {
-           text += "\n\n";
-        }
-      }
-    };
-    
-    // Bắt đầu từ body, nếu không có body (XML) thì dùng documentElement
-    const root = doc.body || doc.documentElement;
-    if (root) {
-        walk(root);
-    }
-    
-    // Fallback: Nếu walk thất bại (do cấu trúc lạ), dùng textContent
-    if (!text.trim() && root) {
-        text = root.textContent || "";
-    }
-    
-    // Xử lý khoảng trắng thừa
-    return text.replace(/\n\s+\n/g, '\n\n').trim();
   };
 
   const extractDataFromEpub = async (file: File): Promise<{ text: string, chapters: Chapter[], coverUrl: string | null }> => {
@@ -203,423 +140,408 @@ const App: React.FC = () => {
     }
 
     setImportStatus('Đang đọc cấu trúc EPUB...');
-    
-    // Trích xuất mục lục (TOC)
     const navigation = await book.loaded.navigation;
     const toc: Chapter[] = [];
-    
     const processToc = (items: any[]) => {
       items.forEach(item => {
-        toc.push({ 
-          title: item.label.trim(), 
-          id: item.href, 
-          index: 0 
-        });
-        if (item.subitems && item.subitems.length > 0) {
-          processToc(item.subitems);
-        }
+        toc.push({ title: item.label.trim(), id: item.href, index: 0 });
+        if (item.subitems && item.subitems.length > 0) processToc(item.subitems);
       });
     };
-    
-    if (navigation.toc) {
-      processToc(navigation.toc);
-    }
+    if (navigation.toc) processToc(navigation.toc);
 
     let fullText = "";
-    let currentParagraphIndex = 0;
-    
     const spine = book.spine;
-    
     for (let i = 0; i < spine.length; i++) {
         const item = spine.get(i);
         setImportStatus(`Đang xử lý chương ${i + 1}/${spine.length}...`);
-        
         try {
             let contentString = "";
-            
             if (book.archive) {
-                 try {
-                    contentString = await book.archive.getText(item.href);
-                 } catch (e) { }
+                 try { contentString = await book.archive.getText(item.href); } catch (e) { }
             }
-            
             if (!contentString) {
                 const loaded = await book.load(item.href);
-                if (typeof loaded === 'string') {
-                    contentString = loaded;
-                } else if (loaded instanceof Document) {
-                    contentString = loaded.documentElement.outerHTML;
-                }
+                if (typeof loaded === 'string') contentString = loaded;
+                else if (loaded instanceof Document) contentString = loaded.documentElement.outerHTML;
             }
-
             if (contentString) {
                  const parser = new DOMParser();
-                 const doc = parser.parseFromString(contentString, 'text/html');
-                 const textContent = extractTextFromDoc(doc);
-                 
-                 const cleanItemHref = item.href; 
-                 toc.forEach(t => {
-                    if (t.id) {
-                        const tocFile = t.id.split('#')[0];
-                        if (cleanItemHref.endsWith(tocFile) || tocFile.endsWith(cleanItemHref)) {
-                           if (t.index === 0) t.index = currentParagraphIndex;
-                        }
-                    }
-                 });
-
-                 const finalContent = textContent || "";
-                 const paragraphs = finalContent.split(/\n\s*\n/);
-                 
-                 if (finalContent.trim()) {
-                    currentParagraphIndex += paragraphs.length;
-                    fullText += finalContent + "\n\n";
-                 }
+                 const doc = parser.parseFromString(contentString, "text/html");
+                 fullText += doc.body.innerText + "\n\n";
             }
-        } catch (err) {
-            console.warn(`Lỗi khi đọc section ${i}:`, err);
-        }
+        } catch (e) { console.error(e); }
     }
-    
-    const uniqueToc = toc.filter((t, index, self) => 
-       index === self.findIndex((x) => x.title === t.title && x.index === t.index)
-    );
-    const cleanToc = uniqueToc.filter(t => t.title).sort((a, b) => a.index - b.index);
-
-    return { text: fullText, chapters: cleanToc, coverUrl };
+    return { text: fullText, chapters: toc, coverUrl };
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      const fileType = file.name.toLowerCase().endsWith('.epub') ? 'epub' : 
-                       file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : null;
-
-      if (!fileType) {
-        alert('Vui lòng tải tệp PDF hoặc EPUB.');
-        return;
-      }
       setSelectedFile(file);
-      if (!newBook.title) {
-        setNewBook(prev => ({ ...prev, title: file.name.replace(/\.(pdf|epub)$/i, '') }));
-      }
+      const fileName = file.name.replace(/\.[^/.]+$/, "");
+      setNewBook(prev => ({ ...prev, title: fileName }));
     }
-  };
-
-  const handleUpdateBook = async (updatedBook: Book) => {
-    // Cập nhật UI ngay lập tức
-    setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
-    if (readingBook && readingBook.id === updatedBook.id) {
-      setReadingBook(updatedBook);
-    }
-    // Sync lên Firebase
-    await updateBookInFirebase(updatedBook);
-  };
-
-  const handleDeleteBook = async (id: string) => {
-    if (confirm('Xoá bản phân tích này? Hành động này sẽ xoá sách khỏi Cloud.')) {
-        setBooks(prev => prev.filter(b => b.id !== id));
-        await deleteBookFromFirebase(id);
-    }
-  };
-
-  const handleOpenBook = async (book: Book) => {
-      // Nếu đã có text, mở ngay
-      if (book.fullText) {
-          setReadingBook(book);
-          return;
-      }
-
-      // Nếu chưa có text (do lazy load từ firebase), phải tải về
-      if (book.textStorageUrl) {
-          setIsLoadingContent(true);
-          try {
-              const text = await fetchTextFromStorage(book.textStorageUrl);
-              const fullBook = { ...book, fullText: text };
-              setReadingBook(fullBook);
-              // Cập nhật lại books state để lần sau không phải load lại trong phiên này
-              setBooks(prev => prev.map(b => b.id === book.id ? fullBook : b));
-          } catch (e) {
-              alert("Không thể tải nội dung sách. Vui lòng kiểm tra kết nối mạng.");
-          } finally {
-              setIsLoadingContent(false);
-          }
-      } else {
-          // Trường hợp sách lỗi hoặc sách cũ local
-          setReadingBook(book);
-      }
   };
 
   const handleAddBook = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newBook.title) return;
-    if (!user) {
-        alert("Vui lòng đăng nhập để lưu sách.");
-        return;
-    }
+    if (!selectedFile || !user) return;
 
     setIsImporting(true);
-    setImportStatus('Đang khởi động...');
-    
+    setShowAddModal(false);
+
     try {
       let extractedText = "";
-      let chapters: Chapter[] = [];
       let format: 'pdf' | 'epub' = 'pdf';
-      let extractedCoverUrl: string | null = null;
+      let chapters: Chapter[] = [];
+      let coverUrl: string | null = null;
 
-      if (selectedFile) {
-        if (selectedFile.name.toLowerCase().endsWith('.epub')) {
-            format = 'epub';
-            const epubData = await extractDataFromEpub(selectedFile);
-            extractedText = epubData.text;
-            chapters = epubData.chapters;
-            extractedCoverUrl = epubData.coverUrl;
-        } else {
-            const pdfData = await extractTextFromPdf(selectedFile);
-            extractedText = pdfData.text;
-            extractedCoverUrl = pdfData.coverUrl;
-        }
+      if (selectedFile.type === 'application/pdf') {
+        const result = await extractTextFromPdf(selectedFile);
+        extractedText = result.text;
+        coverUrl = result.coverUrl;
+        format = 'pdf';
+      } else if (selectedFile.type === 'application/epub+zip') {
+        const result = await extractDataFromEpub(selectedFile);
+        extractedText = result.text;
+        chapters = result.chapters;
+        coverUrl = result.coverUrl;
+        format = 'epub';
       }
 
-      setImportStatus('AI đang phân tích tri thức...');
+      setImportStatus('Đang phân tích AI (bước cuối)...');
       const aiData = await analyzeBook(newBook.title, newBook.author, extractedText);
-      
-      const tempBook: Book = {
-        id: "", // Firebase sẽ tạo
+
+      const book: Book = {
+        id: crypto.randomUUID(),
+        userId: user.uid, // Gắn ID người dùng vào sách
         title: newBook.title,
-        author: newBook.author || 'Ẩn danh',
-        category: aiData.category || 'Khác',
-        description: aiData.description || '',
-        summary: aiData.summary || '',
-        insightHtml: aiData.insightHtml || '',
-        fullText: extractedText,
-        format: format,
-        coverUrl: extractedCoverUrl || `https://picsum.photos/seed/${newBook.title}/400/600`,
+        author: newBook.author || "Unknown",
+        category: aiData.category || "General",
+        description: aiData.description || "",
+        coverUrl: coverUrl || "", 
         status: BookStatus.WANT_TO_READ,
         addedDate: new Date().toISOString(),
-        pdfData: selectedFile ? "FILE_ATTACHED" : undefined,
+        summary: aiData.summary,
+        insightHtml: aiData.insightHtml,
+        fullText: extractedText,
+        chapters: chapters,
+        format: format,
         notes: [],
-        chapters: chapters, 
-        progress: 0,
-        lastScrollPosition: 0
+        progress: 0
       };
 
-      setImportStatus('Đang đồng bộ lên Cloud...');
-      const savedBook = await addBookToFirebase(tempBook);
+      await saveBook(book); // Lưu vào IndexedDB
+      setBooks(prev => [book, ...prev]);
 
-      setBooks(prev => [savedBook, ...prev]);
-      setNewBook({ title: '', author: '' });
-      setSelectedFile(null);
+    } catch (error) {
+      console.error("Error importing book:", error);
+      alert("Có lỗi xảy ra khi nhập sách.");
+    } finally {
       setIsImporting(false);
       setImportStatus('');
-      setShowAddModal(false);
-    } catch (error) {
-      console.error("Error adding book:", error);
-      setIsImporting(false);
-      setImportStatus('Có lỗi xảy ra!');
-      alert('Không thể xử lý sách hoặc lỗi upload Firebase.');
+      setNewBook({ title: '', author: '' });
+      setSelectedFile(null);
     }
   };
 
-  // --- Render Login Screen if not logged in ---
-  if (!user) {
-      return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4 transition-colors duration-300">
-             <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-2xl shadow-xl p-8 border border-slate-200 dark:border-slate-800 text-center relative overflow-hidden">
-                 
-                 {/* Decorative background element */}
-                 <div className="absolute -top-20 -right-20 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl"></div>
-                 <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl"></div>
+  const handleDeleteBook = async (id: string) => {
+    if (confirm("Bạn có chắc chắn muốn xóa sách này không?")) {
+      await deleteBook(id);
+      setBooks(prev => prev.filter(b => b.id !== id));
+    }
+  };
 
-                 <div className="relative z-10">
-                    <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-500/30 mx-auto mb-6">
-                        <BookIcon className="w-8 h-8" />
-                    </div>
-                    <h1 className="text-3xl font-black text-slate-900 dark:text-white mb-2">Lumiere Insight</h1>
-                    <p className="text-slate-500 dark:text-slate-400 mb-8">Nền tảng đọc sách & giải phẫu tri thức hỗ trợ bởi AI. Đăng nhập để đồng bộ thư viện của bạn.</p>
-                    
-                    <button 
-                        onClick={handleLogin}
-                        className="w-full py-3 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl font-bold flex items-center justify-center gap-3 transition-all shadow-sm group"
-                    >
-                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-                        <span className="text-slate-700 dark:text-white">Tiếp tục với Google</span>
-                    </button>
-                    
-                    <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 flex justify-center items-center gap-2">
-                        <button 
-                            onClick={() => setIsDarkMode(!isDarkMode)}
-                            className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-indigo-500 transition-colors"
-                        >
-                            {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                        </button>
-                        <span className="text-xs text-slate-400">Giao diện</span>
-                    </div>
-                 </div>
-             </div>
-        </div>
-      );
+  const handleUpdateBookStatus = async (id: string, status: BookStatus) => {
+    const book = books.find(b => b.id === id);
+    if (book) {
+      const updatedBook = { ...book, status };
+      await saveBook(updatedBook);
+      setBooks(prev => prev.map(b => b.id === id ? updatedBook : b));
+    }
+  };
+
+  const handleUpdateBookContent = async (updatedBook: Book) => {
+    await saveBook(updatedBook);
+    setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
+    setReadingBook(updatedBook); 
+  };
+
+  // --- RENDER ---
+  
+  if (isAuthLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+      </div>
+    );
   }
 
+  // LOGIN SCREEN
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950 px-4">
+        <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-xl p-8 text-center border border-slate-200 dark:border-slate-800">
+           <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-indigo-500/30">
+              <Sparkles className="w-8 h-8 text-white" />
+           </div>
+           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-2">Hyle Reader</h1>
+           <p className="text-slate-500 dark:text-slate-400 mb-8">Ứng dụng đọc sách thông minh với công nghệ AI Insight.</p>
+           
+           <button 
+             onClick={loginWithGoogle}
+             className="w-full py-3 px-4 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl flex items-center justify-center gap-3 font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all hover:scale-[1.02] shadow-sm"
+           >
+             <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+             </svg>
+             Đăng nhập với Google
+           </button>
+           
+           <div className="mt-8 text-xs text-slate-400">
+             <p>Dữ liệu sách sẽ được lưu trên trình duyệt này.</p>
+           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // READER MODE
+  if (readingBook) {
+    return (
+      <Reader 
+        book={readingBook} 
+        onClose={() => setReadingBook(null)} 
+        onUpdateBook={handleUpdateBookContent}
+      />
+    );
+  }
+
+  // MAIN DASHBOARD
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-20 transition-colors duration-300">
-      
-      {/* Loading Overlay when Fetching Content */}
-      {isLoadingContent && (
-          <div className="fixed inset-0 z-[70] bg-white/80 dark:bg-slate-900/80 backdrop-blur flex flex-col items-center justify-center">
-              <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mb-4" />
-              <p className="font-bold text-slate-700 dark:text-slate-300">Đang tải nội dung sách từ Cloud...</p>
-          </div>
-      )}
-
-      <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
-              <BookIcon className="w-6 h-6" />
+    <div className="min-h-screen pb-20">
+      {/* Navbar */}
+      <nav className="sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center gap-2">
+              <div className="bg-indigo-600 p-2 rounded-lg">
+                <Sparkles className="h-5 w-5 text-white" />
+              </div>
+              <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600 dark:from-indigo-400 dark:to-violet-400">
+                Hyle Reader
+              </span>
             </div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-800 dark:text-white hidden sm:block">Lumiere Insight</h1>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-full">
-                <div className="w-6 h-6 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-bold">
-                    {user.email?.charAt(0).toUpperCase()}
-                </div>
-                <span className="text-xs font-medium max-w-[100px] truncate">{user.displayName}</span>
+            
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+              >
+                {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </button>
+              
+              <div className="flex items-center gap-3 pl-4 border-l border-slate-200 dark:border-slate-800 ml-2">
+                 {user.photoURL ? (
+                    <img src={user.photoURL} alt="User" className="w-8 h-8 rounded-full border border-slate-200 dark:border-slate-700" />
+                 ) : (
+                    <div className="w-8 h-8 bg-indigo-100 dark:bg-indigo-900 rounded-full flex items-center justify-center text-indigo-700 dark:text-indigo-300 font-bold">
+                        {user.email?.charAt(0).toUpperCase()}
+                    </div>
+                 )}
+                 <button 
+                   onClick={handleLogout}
+                   className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
+                   title="Đăng xuất"
+                 >
+                   <LogOut className="w-5 h-5" />
+                 </button>
+              </div>
             </div>
-
-            <button 
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className="p-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
-            >
-              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
-            <button 
-              onClick={handleLogout}
-              className="p-2.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 border border-red-100 dark:border-red-900/30 transition-colors"
-              title="Đăng xuất"
-            >
-              <LogOut className="w-5 h-5" />
-            </button>
-            <button 
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg font-medium transition-all shadow-md active:scale-95"
-            >
-              <Plus className="w-5 h-5" />
-              <span className="hidden sm:inline">Phân tích sách</span>
-            </button>
           </div>
         </div>
-      </header>
+      </nav>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex flex-col md:flex-row gap-4 mb-8">
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Thư viện của bạn</h1>
+            <p className="text-slate-500 dark:text-slate-400 flex items-center gap-2">
+              <Layers className="w-4 h-4" /> {books.length} cuốn sách • Dữ liệu lưu cục bộ
+            </p>
+          </div>
+          <button 
+            onClick={() => setShowAddModal(true)}
+            disabled={isImporting}
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/30 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isImporting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+            Thêm sách mới
+          </button>
+        </div>
+
+        {/* Search & Filter */}
+        <div className="flex flex-col sm:flex-row gap-4 mb-8">
           <div className="relative flex-grow">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
             <input 
               type="text" 
-              placeholder="Tìm kiếm trí thức..."
-              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+              placeholder="Tìm kiếm sách, tác giả..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white"
             />
           </div>
-          
-          <div className="flex gap-2">
-            <select 
-              className="pl-4 pr-10 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl outline-none appearance-none shadow-sm cursor-pointer"
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-            >
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{cat === 'All' ? 'Tất cả thể loại' : cat}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {isLoadingBooks ? (
-             <div className="flex justify-center py-20">
-                 <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
-             </div>
-        ) : filteredBooks.length > 0 ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-            {filteredBooks.map(book => (
-              <BookCard 
-                key={book.id} 
-                book={book} 
-                onUpdateStatus={(id, status) => handleUpdateBook({ ...book, status })} 
-                onDelete={handleDeleteBook}
-                onOpenReader={handleOpenBook}
-              />
+          <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 no-scrollbar">
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setFilterCategory(cat)}
+                className={`px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${filterCategory === cat ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:border-slate-300'}`}
+              >
+                {cat}
+              </button>
             ))}
           </div>
+        </div>
+        
+        {/* Loading Indicator */}
+        {isLoadingBooks ? (
+             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                {[1,2,3,4,5].map(i => (
+                    <div key={i} className="bg-white dark:bg-slate-900 h-80 rounded-xl animate-pulse border border-slate-200 dark:border-slate-800"></div>
+                ))}
+             </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-24 text-slate-400 dark:text-slate-600 bg-white dark:bg-slate-900/50 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800">
-            <Layers className="w-16 h-16 mb-4 opacity-20" />
-            <p className="text-lg font-medium">Chưa có bản giải phẫu tri thức nào</p>
-          </div>
+            <>
+                {/* Book Grid */}
+                {filteredBooks.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 animate-in fade-in duration-500">
+                    {filteredBooks.map(book => (
+                      <BookCard 
+                        key={book.id} 
+                        book={book} 
+                        onUpdateStatus={handleUpdateBookStatus} 
+                        onDelete={handleDeleteBook}
+                        onOpenReader={setReadingBook}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800">
+                    <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <BookIcon className="w-10 h-10 text-slate-300 dark:text-slate-600" />
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Chưa có cuốn sách nào</h3>
+                    <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto mb-6">Thư viện của bạn đang trống. Hãy thêm cuốn sách đầu tiên để trải nghiệm AI Insight.</p>
+                    <button onClick={() => setShowAddModal(true)} className="text-indigo-600 font-bold hover:underline">Thêm sách ngay</button>
+                  </div>
+                )}
+            </>
         )}
+
       </main>
 
-      {/* Add Book Modal */}
+      {/* Import Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 my-8">
-            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
-              <h2 className="text-xl font-bold flex items-center gap-2 dark:text-white">
-                <Sparkles className="w-5 h-5 text-indigo-500" />
-                Giải phẫu tri thức mới
-              </h2>
-              <button onClick={() => setShowAddModal(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg p-6 relative border border-slate-200 dark:border-slate-700 animate-in zoom-in-95 duration-200">
+            <button onClick={() => setShowAddModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+              <X className="w-6 h-6" />
+            </button>
             
-            <form onSubmit={handleAddBook} className="p-6 space-y-4">
+            <h2 className="text-2xl font-bold mb-6 text-slate-900 dark:text-white">Nhập sách mới</h2>
+            
+            <form onSubmit={handleAddBook} className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Tải lên sách/tài liệu</label>
+                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Chọn File (PDF/EPUB)</label>
                 <div 
                   onClick={() => fileInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-colors ${selectedFile ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/10' : 'border-slate-200 dark:border-slate-700 hover:border-indigo-400'}`}
+                  className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${selectedFile ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-slate-300 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500'}`}
                 >
-                  <input type="file" accept=".pdf,.epub" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleFileChange} 
+                    accept=".pdf,.epub" 
+                    className="hidden" 
+                  />
                   {selectedFile ? (
-                    <div className="flex flex-col items-center gap-2 text-indigo-600 dark:text-indigo-400 text-center">
-                      <FileText className="w-10 h-10" />
-                      <span className="text-xs font-bold truncate max-w-[200px]">{selectedFile.name}</span>
+                    <div className="flex items-center justify-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold">
+                      <FileText className="w-6 h-6" />
+                      {selectedFile.name}
                     </div>
                   ) : (
-                    <>
-                      <Upload className="w-8 h-8 text-slate-400 mb-2" />
-                      <span className="text-sm text-slate-500 font-medium text-center">Chọn file PDF hoặc EPUB</span>
-                    </>
+                    <div className="space-y-2">
+                       <Upload className="w-10 h-10 text-slate-400 mx-auto" />
+                       <p className="text-slate-500 dark:text-slate-400 text-sm">Nhấn để tải lên hoặc kéo thả file vào đây</p>
+                    </div>
                   )}
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <input required type="text" className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Tên sách/Tài liệu..." value={newBook.title} onChange={(e) => setNewBook(prev => ({ ...prev, title: e.target.value }))} />
-                <input type="text" className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Tác giả..." value={newBook.author} onChange={(e) => setNewBook(prev => ({ ...prev, author: e.target.value }))} />
+              <div className="grid grid-cols-2 gap-4">
+                 <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Tên sách</label>
+                    <input 
+                      required
+                      className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      value={newBook.title}
+                      onChange={e => setNewBook({...newBook, title: e.target.value})}
+                    />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Tác giả</label>
+                    <input 
+                      required
+                      className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      value={newBook.author}
+                      onChange={e => setNewBook({...newBook, author: e.target.value})}
+                    />
+                 </div>
               </div>
-              
-              <button disabled={isImporting} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white py-3.5 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition-all">
-                {isImporting ? <><Loader2 className="w-5 h-5 animate-spin" /> <span className="text-sm">{importStatus}</span></> : <><Sparkles className="w-5 h-5" /> Bắt đầu giải phẫu</>}
+
+              <button 
+                type="submit" 
+                disabled={!selectedFile || isImporting}
+                className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/30 flex items-center justify-center gap-2 mt-4 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {isImporting ? (
+                  <>
+                     <Loader2 className="w-5 h-5 animate-spin" />
+                     {importStatus || 'Đang xử lý...'}
+                  </>
+                ) : (
+                  'Bắt đầu phân tích & Nhập'
+                )}
               </button>
             </form>
           </div>
         </div>
       )}
 
-      {readingBook && (
-        <Reader 
-          book={readingBook} 
-          onClose={() => setReadingBook(null)} 
-          onUpdateBook={handleUpdateBook}
-        />
+      {/* Loading Overlay */}
+      {isImporting && (
+         <div className="fixed inset-0 z-[60] bg-white/80 dark:bg-slate-900/90 backdrop-blur flex flex-col items-center justify-center text-center p-4">
+             <div className="w-20 h-20 relative mb-6">
+                <div className="absolute inset-0 border-4 border-slate-200 dark:border-slate-700 rounded-full"></div>
+                <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
+                <Sparkles className="absolute inset-0 m-auto text-indigo-600 w-8 h-8 animate-pulse" />
+             </div>
+             <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Đang nhập thư viện</h3>
+             <p className="text-slate-500 dark:text-slate-400 font-mono text-sm">{importStatus}</p>
+         </div>
       )}
     </div>
   );
 };
 
 export default App;
+    
