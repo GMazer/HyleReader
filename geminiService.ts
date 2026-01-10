@@ -4,6 +4,26 @@ import { Book, VocabularyItem } from "./types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
 
+// Hàm xử lý lỗi chung cho Gemini
+const handleGeminiError = (error: any, action: string): string => {
+  console.error(`Gemini ${action} Error:`, error);
+  
+  const msg = error.message || "";
+  const status = error.status;
+
+  if (status === 429 || msg.includes("429") || msg.includes("quota") || msg.includes("Resource has been exhausted")) {
+    return "⚠️ Hết hạn mức API (429). Vui lòng đợi 1-2 phút rồi thử lại.";
+  }
+  if (status === 503 || msg.includes("503")) {
+    return "⚠️ Máy chủ AI đang bận. Vui lòng thử lại sau.";
+  }
+  if (msg.includes("SAFETY")) {
+    return "⚠️ Nội dung bị chặn bởi bộ lọc an toàn của Google.";
+  }
+  
+  return `Không thể ${action}: ${msg.substring(0, 100)}...`;
+};
+
 export const analyzeBook = async (title: string, author: string, rawText?: string): Promise<Partial<Book>> => {
   try {
     const prompt = rawText 
@@ -41,11 +61,15 @@ export const analyzeBook = async (title: string, author: string, rawText?: strin
       insightHtml: data.insightHtml || ""
     };
   } catch (error) {
-    console.error("Gemini Analysis Error:", error);
+    const friendlyError = handleGeminiError(error, "phân tích sách");
     return {
       category: "Chưa phân loại",
       description: "Lỗi phân tích AI.",
-      insightHtml: "<p>Không thể tạo bản giải phẫu tri thức vào lúc này.</p>"
+      insightHtml: `<div class="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg border border-red-200 dark:border-red-800">
+        <h3 class="font-bold text-lg mb-2">Lỗi phân tích Insight</h3>
+        <p>${friendlyError}</p>
+        <p class="mt-2 text-sm opacity-80">Bạn vẫn có thể đọc nội dung sách bình thường.</p>
+      </div>`
     };
   }
 };
@@ -62,24 +86,7 @@ export const translateText = async (text: string): Promise<string> => {
     });
     return response.text || "Không thể dịch văn bản (Phản hồi rỗng).";
   } catch (error: any) {
-    console.error("Translation Error Details:", {
-        message: error.message,
-        status: error.status, // HTTP Status code if available
-        details: error
-    });
-
-    // Xử lý các mã lỗi phổ biến
-    if (error.message?.includes('429') || error.status === 429) {
-        return "Lỗi: Quá nhiều yêu cầu (Rate Limit). Vui lòng đợi 1 phút rồi thử lại.";
-    }
-    if (error.message?.includes('503') || error.status === 503) {
-        return "Lỗi: Máy chủ AI đang quá tải. Vui lòng thử lại sau.";
-    }
-    if (error.message?.includes('SAFETY')) {
-        return "Lỗi: Nội dung bị chặn bởi bộ lọc an toàn.";
-    }
-
-    return `Đã xảy ra lỗi khi dịch: ${error.message || "Lỗi không xác định"}`;
+    return handleGeminiError(error, "dịch văn bản");
   }
 };
 
@@ -122,7 +129,7 @@ export const lookupDictionary = async (word: string, context?: string): Promise<
             exampleTranslated: data.exampleTranslated
         };
     } catch (error) {
-        console.error("Dictionary Lookup Error:", error);
-        throw error;
+        const msg = handleGeminiError(error, "tra từ điển");
+        throw new Error(msg);
     }
 };
