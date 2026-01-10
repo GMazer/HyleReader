@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Bookmark, ArrowLeft, Sparkles, AlignLeft, MessageSquare, Trash2, Check, List, ChevronRight, ChevronLeft, Type, Minus, Plus, Languages, Loader2, ArrowRight, BookA, Save, Send, Bot, User as UserIcon, MessageCircleQuestion } from 'lucide-react';
 import { Book, Note, Chapter, BookStatus, ReaderSettings, VocabularyItem } from '../../types';
-import { translateText, lookupDictionary, createBookChat } from '../../geminiService';
+import { translateText, lookupDictionary, createBookChat, handleGeminiError } from '../../geminiService';
 import { saveVocabulary } from '../../db';
 import { Chat, GenerateContentResponse } from '@google/genai';
 
@@ -155,7 +155,6 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, onUpdateBook }) => {
     chatSessionRef.current = createBookChat(book.title, book.author, context);
   }, [book.id]); // Re-create if book ID changes
 
-  // ... (Giữ nguyên logic detect chapters và khôi phục vị trí đọc từ code cũ) ...
   useEffect(() => {
     if (book.fullText && (!book.chapters || book.chapters.length === 0) && onUpdateBook) {
       const detectedChapters: Chapter[] = [];
@@ -251,14 +250,15 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, onUpdateBook }) => {
       const result: GenerateContentResponse = await chatSessionRef.current.sendMessage({ message: userMsg });
       setChatMessages(prev => [...prev, { role: 'model', text: result.text || "Xin lỗi, mình không trả lời được câu này." }]);
     } catch (error) {
-      console.error("Chat Error:", error);
-      setChatMessages(prev => [...prev, { role: 'model', text: "Đã xảy ra lỗi kết nối. Vui lòng thử lại sau." }]);
+      // Sử dụng hàm handleGeminiError để lấy thông báo lỗi thân thiện
+      const errorMsg = handleGeminiError(error, "trả lời tin nhắn");
+      setChatMessages(prev => [...prev, { role: 'model', text: errorMsg }]);
     } finally {
       setIsChatLoading(false);
     }
   };
 
-  // ... (Translation, Note, Selection handlers - giữ nguyên) ...
+  // ... (Translation, Note, Selection handlers) ...
   const handleTranslateChapter = async () => {
       if (isTranslatedMode) {
           setIsTranslatedMode(false);
@@ -385,7 +385,6 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, onUpdateBook }) => {
   };
   
   const handleNoteClick = (note: Note) => {
-    // ... (Giữ nguyên logic scroll note) ...
     let targetChapterIndex = -1;
     for (let i = 0; i < chapters.length; i++) {
         const start = chapters[i].index;

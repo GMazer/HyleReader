@@ -5,7 +5,7 @@ import { Book, VocabularyItem } from "./types";
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
 
 // Hàm xử lý lỗi chung cho Gemini
-const handleGeminiError = (error: any, action: string): string => {
+export const handleGeminiError = (error: any, action: string): string => {
   console.error(`Gemini ${action} Error:`, error);
   
   const msg = error.message || "";
