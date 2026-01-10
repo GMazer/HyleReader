@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Book } from "./types";
+import { Book, VocabularyItem } from "./types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
 
@@ -61,4 +61,48 @@ export const translateText = async (text: string): Promise<string> => {
     console.error("Translation Error:", error);
     return "Đã xảy ra lỗi khi dịch văn bản.";
   }
+};
+
+export const lookupDictionary = async (word: string, context?: string): Promise<Partial<VocabularyItem>> => {
+    try {
+        const prompt = `Act as a dictionary. Look up the word "${word}". 
+        Context sentence where the word appears: "${context || 'No context provided'}".
+        Provide the Vietnamese meaning, IPA phonetic transcription, part of speech, synonyms, and a usage example.
+        Return JSON.`;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        word: { type: Type.STRING },
+                        phonetic: { type: Type.STRING, description: "IPA format" },
+                        partOfSpeech: { type: Type.STRING },
+                        meaning: { type: Type.STRING, description: "Vietnamese meaning" },
+                        synonyms: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        exampleOriginal: { type: Type.STRING, description: "Example sentence in original language" },
+                        exampleTranslated: { type: Type.STRING, description: "Example sentence translated to Vietnamese" }
+                    },
+                    required: ["word", "phonetic", "partOfSpeech", "meaning", "synonyms", "exampleOriginal", "exampleTranslated"]
+                }
+            }
+        });
+
+        const data = JSON.parse(response.text || "{}");
+        return {
+            word: data.word,
+            phonetic: data.phonetic,
+            partOfSpeech: data.partOfSpeech,
+            meaning: data.meaning,
+            synonyms: data.synonyms || [],
+            exampleOriginal: data.exampleOriginal,
+            exampleTranslated: data.exampleTranslated
+        };
+    } catch (error) {
+        console.error("Dictionary Lookup Error:", error);
+        throw error;
+    }
 };

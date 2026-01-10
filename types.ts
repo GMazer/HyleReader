@@ -13,6 +13,20 @@ export interface Note {
   createdAt: string;
 }
 
+export interface VocabularyItem {
+  id: string;
+  userId: string;
+  word: string;
+  phonetic: string;
+  partOfSpeech: string;
+  meaning: string;
+  synonyms: string[];
+  exampleOriginal: string;
+  exampleTranslated: string;
+  contextSentence?: string; // Câu văn mà người dùng đã gặp từ này
+  learnedAt: string;
+}
+
 export interface Chapter {
   title: string;
   index: number; // Chỉ số của đoạn văn (paragraph index) bắt đầu chương
