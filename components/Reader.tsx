@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Bookmark, ArrowLeft, Sparkles, AlignLeft, MessageSquare, Trash2, Check, List, ChevronRight, ChevronLeft, Type, Minus, Plus, Languages, Loader2, ArrowRight, BookA, Volume2, Save } from 'lucide-react';
 import { Book, Note, Chapter, BookStatus, ReaderSettings, VocabularyItem } from '../types';
@@ -524,7 +523,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, onUpdateBook }) => {
         </div>
       </header>
       
-      {/* Settings Panel Popover (Keeping existing code structure) */}
+      {/* Settings Panel Popover */}
       {showSettings && (
         <div className="absolute top-16 right-4 md:right-20 z-50 w-72 bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4 settings-panel animate-in zoom-in-95 duration-200">
            {/* Theme Selection */}
@@ -644,8 +643,12 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, onUpdateBook }) => {
               )}
             </h3>
             <div className="flex gap-1">
-                {(sidebarView === 'translation' || sidebarView === 'dictionary') && (
+                {sidebarView === 'translation' && (
                      <button onClick={() => setSidebarView('notes')} className="p-1 opacity-50 hover:opacity-100 text-xs font-bold mr-2">Quay lại</button>
+                )}
+                {/* Dictionary back button logic changed: close sidebar directly */}
+                {sidebarView === 'dictionary' && (
+                     <button onClick={() => setShowRightSidebar(false)} className="p-1 opacity-50 hover:opacity-100 text-xs font-bold mr-2">Đóng</button>
                 )}
                 <button onClick={() => setShowRightSidebar(false)} className="opacity-50 hover:opacity-100"><X className="w-5 h-5" /></button>
             </div>
