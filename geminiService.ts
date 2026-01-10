@@ -52,14 +52,34 @@ export const analyzeBook = async (title: string, author: string, rawText?: strin
 
 export const translateText = async (text: string): Promise<string> => {
   try {
+    if (!process.env.API_KEY) {
+        throw new Error("Chưa cấu hình API Key");
+    }
+
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Translate the following text to Vietnamese. Maintain the original tone, formatting, and paragraph structure (keep newlines). return only the translated text.\n\nText to translate:\n${text}`,
     });
-    return response.text || "Không thể dịch văn bản.";
-  } catch (error) {
-    console.error("Translation Error:", error);
-    return "Đã xảy ra lỗi khi dịch văn bản.";
+    return response.text || "Không thể dịch văn bản (Phản hồi rỗng).";
+  } catch (error: any) {
+    console.error("Translation Error Details:", {
+        message: error.message,
+        status: error.status, // HTTP Status code if available
+        details: error
+    });
+
+    // Xử lý các mã lỗi phổ biến
+    if (error.message?.includes('429') || error.status === 429) {
+        return "Lỗi: Quá nhiều yêu cầu (Rate Limit). Vui lòng đợi 1 phút rồi thử lại.";
+    }
+    if (error.message?.includes('503') || error.status === 503) {
+        return "Lỗi: Máy chủ AI đang quá tải. Vui lòng thử lại sau.";
+    }
+    if (error.message?.includes('SAFETY')) {
+        return "Lỗi: Nội dung bị chặn bởi bộ lọc an toàn.";
+    }
+
+    return `Đã xảy ra lỗi khi dịch: ${error.message || "Lỗi không xác định"}`;
   }
 };
 
