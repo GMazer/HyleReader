@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Bookmark, ArrowLeft, Sparkles, AlignLeft, MessageSquare, Trash2, Check, List, ChevronRight, ChevronLeft, Type, Minus, Plus, Languages, Loader2, ArrowRight } from 'lucide-react';
 import { Book, Note, Chapter, BookStatus, ReaderSettings } from '../types';
@@ -790,7 +789,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, onUpdateBook }) => {
           )}
           
           <div className="mt-20 pt-10 pb-20 border-t border-slate-100/10 text-center opacity-40 text-xs">
-            <p>© Lumiere Insight • Công cụ giải phẫu tri thức hỗ trợ bởi Gemini AI</p>
+            <p>© Hyle Reader • Developed by Hyle</p>
           </div>
         </div>
 

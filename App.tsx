@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Search, Book as BookIcon, Layers, Loader2, Sparkles, Sun, Moon, FileText, Upload, X, LogOut, Trash2, Github } from 'lucide-react';
+import { Plus, Search, Book as BookIcon, Layers, Loader2, Sparkles, Sun, Moon, FileText, Upload, X, LogOut, Trash2, Github, BookOpen } from 'lucide-react';
 import { Book, BookStatus, Chapter } from './types';
 import { analyzeBook } from './geminiService';
 import BookCard from './components/BookCard';
@@ -284,7 +283,7 @@ const App: React.FC = () => {
       <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950 px-4">
         <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-xl p-8 text-center border border-slate-200 dark:border-slate-800">
            <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-indigo-500/30">
-              <Sparkles className="w-8 h-8 text-white" />
+              <BookOpen className="w-8 h-8 text-white" />
            </div>
            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-2">Hyle Reader</h1>
            <p className="text-slate-500 dark:text-slate-400 mb-8">Ứng dụng đọc sách thông minh với công nghệ AI Insight.</p>
@@ -323,14 +322,14 @@ const App: React.FC = () => {
 
   // MAIN DASHBOARD
   return (
-    <div className="min-h-screen pb-20">
+    <div className="min-h-screen flex flex-col">
       {/* Navbar */}
       <nav className="sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-2">
               <div className="bg-indigo-600 p-2 rounded-lg">
-                <Sparkles className="h-5 w-5 text-white" />
+                <BookOpen className="h-5 w-5 text-white" />
               </div>
               <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600 dark:from-indigo-400 dark:to-violet-400">
                 Hyle Reader
@@ -367,7 +366,7 @@ const App: React.FC = () => {
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full">
         
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
@@ -448,6 +447,15 @@ const App: React.FC = () => {
         )}
 
       </main>
+      
+      {/* Footer */}
+      <footer className="py-8 border-t border-slate-200 dark:border-slate-800 text-center bg-white dark:bg-slate-950">
+        <p className="text-slate-500 dark:text-slate-400 font-medium flex items-center justify-center gap-2">
+           Developed by <span className="text-indigo-600 dark:text-indigo-400 font-bold">Hyle</span>
+           <span className="text-slate-300">•</span>
+           <span className="text-xs">Powered by Gemini AI</span>
+        </p>
+      </footer>
 
       {/* Import Modal */}
       {showAddModal && (
@@ -533,7 +541,7 @@ const App: React.FC = () => {
              <div className="w-20 h-20 relative mb-6">
                 <div className="absolute inset-0 border-4 border-slate-200 dark:border-slate-700 rounded-full"></div>
                 <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
-                <Sparkles className="absolute inset-0 m-auto text-indigo-600 w-8 h-8 animate-pulse" />
+                <BookOpen className="absolute inset-0 m-auto text-indigo-600 w-8 h-8 animate-pulse" />
              </div>
              <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Đang nhập thư viện</h3>
              <p className="text-slate-500 dark:text-slate-400 font-mono text-sm">{importStatus}</p>
@@ -544,4 +552,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-    
