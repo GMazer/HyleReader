@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Chat } from "@google/genai";
 import { Book, VocabularyItem } from "./types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
@@ -75,18 +75,40 @@ export const analyzeBook = async (title: string, author: string, rawText?: strin
 };
 
 export const translateText = async (text: string): Promise<string> => {
+  const key = process.env.AZURE_TRANSLATOR_KEY;
+  const region = process.env.AZURE_TRANSLATOR_REGION;
+  const endpoint = "https://api.cognitive.microsofttranslator.com";
+
+  if (!key || !region) {
+      console.warn("Chưa cấu hình Azure Translator Key/Region trong biến môi trường.");
+      return "Lỗi cấu hình: Thiếu Azure Translator Key hoặc Region.";
+  }
+
   try {
-    if (!process.env.API_KEY) {
-        throw new Error("Chưa cấu hình API Key");
+    const response = await fetch(`${endpoint}/translate?api-version=3.0&to=vi`, {
+      method: 'POST',
+      headers: {
+        'Ocp-Apim-Subscription-Key': key,
+        'Ocp-Apim-Subscription-Region': region,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify([{ 'Text': text }])
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Azure Error: ${response.status} - ${JSON.stringify(errorData)}`);
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Translate the following text to Vietnamese. Maintain the original tone, formatting, and paragraph structure (keep newlines). return only the translated text.\n\nText to translate:\n${text}`,
-    });
-    return response.text || "Không thể dịch văn bản (Phản hồi rỗng).";
+    const data = await response.json();
+    if (data && data[0] && data[0].translations && data[0].translations[0]) {
+      return data[0].translations[0].text;
+    }
+    return "Không nhận được dữ liệu dịch từ Azure.";
+
   } catch (error: any) {
-    return handleGeminiError(error, "dịch văn bản");
+    console.error("Azure Translation Error:", error);
+    return `Lỗi dịch (Azure): ${error.message}`;
   }
 };
 
@@ -132,4 +154,28 @@ export const lookupDictionary = async (word: string, context?: string): Promise<
         const msg = handleGeminiError(error, "tra từ điển");
         throw new Error(msg);
     }
+};
+
+// --- CHAT FEATURE ---
+
+export const createBookChat = (bookTitle: string, bookAuthor: string, contextSnippet: string): Chat => {
+  return ai.chats.create({
+    model: 'gemini-3-flash-preview',
+    config: {
+      systemInstruction: `Bạn là trợ lý đọc sách thông minh AI.
+      Bạn đang hỗ trợ người dùng đọc cuốn sách: "${bookTitle}" của tác giả "${bookAuthor}".
+      
+      Dưới đây là một phần nội dung tóm tắt hoặc trích đoạn của sách để bạn tham khảo ngữ cảnh:
+      ---
+      ${contextSnippet.substring(0, 5000)}
+      ---
+      
+      Nhiệm vụ của bạn:
+      1. Trả lời các câu hỏi liên quan đến nội dung sách.
+      2. Giải thích các khái niệm khó hiểu.
+      3. Tóm tắt các ý chính khi được hỏi.
+      4. Luôn trả lời ngắn gọn, súc tích và thân thiện bằng Tiếng Việt.
+      `,
+    }
+  });
 };
