@@ -22,7 +22,23 @@ const ImportModal: React.FC<ImportModalProps> = ({ user, onClose, onSuccess }) =
   const [importStatus, setImportStatus] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ... (Giữ nguyên logic extractTextFromPdf và extractDataFromEpub từ App.tsx cũ)
+  // Helper: Chuyển Blob URL thành Base64 để lưu trữ lâu dài
+  const blobUrlToBase64 = async (blobUrl: string): Promise<string> => {
+    try {
+      const response = await fetch(blobUrl);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.warn("Failed to convert blob URL to Base64:", error);
+      return "";
+    }
+  };
+
   const extractTextFromPdf = async (file: File): Promise<{ text: string, coverUrl: string | null }> => {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -59,8 +75,19 @@ const ImportModal: React.FC<ImportModalProps> = ({ user, onClose, onSuccess }) =
     const book = ePub(arrayBuffer);
     await book.ready;
     setImportStatus('Đang trích xuất ảnh bìa...');
+    
     let coverUrl = null;
-    try { const cover = await book.coverUrl(); if (cover) coverUrl = cover; } catch (e) {}
+    try { 
+        const coverBlobUrl = await book.coverUrl(); 
+        if (coverBlobUrl) {
+            // QUAN TRỌNG: Chuyển đổi Blob URL sang Base64
+            // Blob URL (blob:...) chỉ tồn tại trong phiên làm việc hiện tại của trình duyệt.
+            // Khi reload, link này sẽ chết. Cần lưu Base64.
+            coverUrl = await blobUrlToBase64(coverBlobUrl);
+        }
+    } catch (e) { 
+        console.warn("Không lấy được bìa EPUB:", e); 
+    }
 
     setImportStatus('Đang đọc cấu trúc EPUB...');
     const navigation = await book.loaded.navigation;
