@@ -12,7 +12,7 @@ export const handleGeminiError = (error: any, action: string): string => {
   const status = error.status;
 
   if (status === 429 || msg.includes("429") || msg.includes("quota") || msg.includes("Resource has been exhausted")) {
-    return "⚠️ Hết hạn mức API (429). Vui lòng đợi 1-2 phút rồi thử lại.";
+    return "429"; // Trả về mã lỗi đặc biệt để UI xử lý logic đổi model
   }
   if (status === 503 || msg.includes("503")) {
     return "⚠️ Máy chủ AI đang bận. Vui lòng thử lại sau.";
@@ -158,9 +158,9 @@ export const lookupDictionary = async (word: string, context?: string): Promise<
 
 // --- CHAT FEATURE ---
 
-export const createBookChat = (bookTitle: string, bookAuthor: string, contextSnippet: string): Chat => {
+export const createBookChat = (bookTitle: string, bookAuthor: string, contextSnippet: string, modelName: string = 'gemini-3-flash-preview'): Chat => {
   return ai.chats.create({
-    model: 'gemini-3-flash-preview',
+    model: modelName,
     config: {
       systemInstruction: `Bạn là trợ lý đọc sách thông minh AI.
       Bạn đang hỗ trợ người dùng đọc cuốn sách: "${bookTitle}" của tác giả "${bookAuthor}".
