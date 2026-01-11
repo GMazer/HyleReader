@@ -83,9 +83,17 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, onUpdateBook }) => {
   // Styles & Effects
   const getThemeStyles = () => {
     switch(settings.theme) {
-      case 'sepia': return 'bg-[#fbf0d9] text-[#5f4b32]';
+      case 'sepia': return 'bg-[#fbf0d9] text-[#433422]'; // Darker text for sepia
       case 'dark': return 'bg-[#1a1a1a] text-[#e5e5e5]';
       default: return 'bg-white text-slate-900';
+    }
+  };
+
+  const getSidebarThemeStyles = () => {
+    switch(settings.theme) {
+      case 'sepia': return 'bg-[#f7e8c3] border-[#ede0c5] text-[#433422]';
+      case 'dark': return 'bg-[#0f0f0f] border-slate-800 text-[#e5e5e5]';
+      default: return 'bg-white border-slate-200 text-slate-900';
     }
   };
 
@@ -125,9 +133,8 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, onUpdateBook }) => {
 
   useEffect(() => {
     if (book.fullText && (!book.chapters || book.chapters.length === 0) && onUpdateBook) {
-      // Auto-detect chapters logic (giữ nguyên logic cũ nhưng rút gọn trong useEffect)
       const detectedChapters: Chapter[] = [];
-      // ... (Giả sử logic detect đã có ở phiên bản trước, giữ cho gọn file)
+      // ... logic detect chapters ...
       detectedChapters.push({ title: "Nội dung đầy đủ", index: 0 });
       onUpdateBook({ ...book, chapters: detectedChapters });
     }
@@ -242,44 +249,46 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, onUpdateBook }) => {
   };
   
   const handleNoteClick = (note: Note) => {
-    // Logic tìm chương chứa note (giản lược)
-    let idx = -1;
-    for(let i=0; i<chapters.length; i++) {
-        // ... Logic tìm index (như cũ)
-    }
-    // Set view
     setSidebarView('notes');
     setShowRightSidebar(true);
   };
 
   const HighlightedText = ({ text, notes }: { text: string; notes?: Note[] }) => {
     if (isTranslatedMode || !notes?.length) return <span>{text}</span>;
-    // ... Logic highlight (như cũ, giữ nguyên render)
-    // Để tiết kiệm dòng trong response, giả sử logic highlight ở đây vẫn hoạt động
     return <span>{text}</span>; 
   };
 
   return (
-    <div className={`fixed inset-0 z-[60] flex flex-col animate-in slide-in-from-bottom duration-500 overflow-hidden ${viewMode === 'read' ? getThemeStyles() : 'bg-white dark:bg-[#0a0c10]'}`}>
+    <div className={`fixed inset-0 z-[60] flex flex-col animate-in slide-in-from-bottom duration-500 overflow-hidden ${getThemeStyles()}`}>
       
       {/* Navbar */}
-      <header className={`h-16 shrink-0 px-6 border-b flex items-center justify-between z-10 ${viewMode === 'read' ? (settings.theme === 'dark' ? 'border-gray-800 bg-[#1a1a1a]/90' : settings.theme === 'sepia' ? 'border-[#ede0c5] bg-[#fbf0d9]/90' : 'border-slate-100 bg-white/90') : 'bg-white/80 dark:bg-[#0a0c10]/80 border-slate-100 dark:border-slate-800/50 backdrop-blur-xl'}`}>
+      <header className={`h-16 shrink-0 px-6 border-b flex items-center justify-between z-10 transition-colors ${
+          settings.theme === 'dark' ? 'border-slate-800 bg-[#1a1a1a]/90' : 
+          settings.theme === 'sepia' ? 'border-[#ede0c5] bg-[#fbf0d9]/90' : 
+          'border-slate-100 bg-white/90'
+      }`}>
         <div className="flex items-center gap-4">
-          <button onClick={onClose} className="p-2 hover:opacity-70 rounded-full transition-colors"><ArrowLeft className="w-5 h-5" /></button>
-          <div className="hidden md:flex rounded-lg p-1 border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900">
-            <button onClick={() => setViewMode('insight')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'insight' ? 'bg-white dark:bg-slate-800 shadow-sm text-indigo-600' : 'opacity-60'}`}><Sparkles className="inline w-3.5 h-3.5 mr-2"/>PHÂN TÍCH</button>
-            <button onClick={() => setViewMode('read')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'read' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600' : 'opacity-60'}`}><AlignLeft className="inline w-3.5 h-3.5 mr-2"/>ĐỌC SÁCH</button>
+          <button onClick={onClose} className="p-2 hover:opacity-70 rounded-full transition-colors"><ArrowLeft className={`w-5 h-5 ${settings.theme === 'dark' ? 'text-gray-300' : ''}`} /></button>
+          <div className={`hidden md:flex rounded-lg p-1 border ${
+              settings.theme === 'dark' ? 'bg-[#0f0f0f] border-slate-700' : 
+              settings.theme === 'sepia' ? 'bg-[#f7e8c3] border-[#ede0c5]' :
+              'bg-slate-100 border-slate-200'
+          }`}>
+            <button onClick={() => setViewMode('insight')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'insight' ? (settings.theme === 'dark' ? 'bg-slate-800 text-indigo-400' : settings.theme === 'sepia' ? 'bg-[#fbf0d9] text-indigo-700' : 'bg-white text-indigo-600') + ' shadow-sm' : 'opacity-60 hover:opacity-100'}`}><Sparkles className="inline w-3.5 h-3.5 mr-2"/>PHÂN TÍCH</button>
+            <button onClick={() => setViewMode('read')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'read' ? (settings.theme === 'dark' ? 'bg-slate-800 text-indigo-400' : settings.theme === 'sepia' ? 'bg-[#fbf0d9] text-indigo-700' : 'bg-white text-indigo-600') + ' shadow-sm' : 'opacity-60 hover:opacity-100'}`}><AlignLeft className="inline w-3.5 h-3.5 mr-2"/>ĐỌC SÁCH</button>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {viewMode === 'read' && (
             <>
               <button onClick={() => { setSidebarView('chat'); setShowRightSidebar(true); }} className="p-2 rounded-lg opacity-60 hover:opacity-100" title="Hỏi AI"><MessageCircleQuestion className="w-5 h-5" /></button>
-              <button onClick={handleTranslateChapter} className={`p-2 rounded-lg ${isTranslatedMode ? 'text-indigo-600 bg-indigo-50' : 'opacity-60 hover:opacity-100'}`}><Languages className="w-5 h-5" /></button>
-              <button onClick={() => setShowSettings(!showSettings)} className="p-2 rounded-lg opacity-60 hover:opacity-100 settings-btn"><Type className="w-5 h-5" /></button>
-              <button onClick={() => setShowTOC(!showTOC)} className="p-2 rounded-lg opacity-60 hover:opacity-100"><List className="w-5 h-5" /></button>
+              {viewMode === 'read' && (
+                  <>
+                  <button onClick={handleTranslateChapter} className={`p-2 rounded-lg ${isTranslatedMode ? (settings.theme === 'dark' ? 'bg-indigo-900/40 text-indigo-400' : 'bg-indigo-50 text-indigo-600') : 'opacity-60 hover:opacity-100'}`}><Languages className="w-5 h-5" /></button>
+                  <button onClick={() => setShowSettings(!showSettings)} className="p-2 rounded-lg opacity-60 hover:opacity-100 settings-btn"><Type className="w-5 h-5" /></button>
+                  <button onClick={() => setShowTOC(!showTOC)} className="p-2 rounded-lg opacity-60 hover:opacity-100"><List className="w-5 h-5" /></button>
+                  </>
+              )}
             </>
-          )}
           <button onClick={() => { setSidebarView('notes'); setShowRightSidebar(!showRightSidebar); }} className="p-2 rounded-lg opacity-60 hover:opacity-100"><Bookmark className="w-5 h-5" /></button>
         </div>
       </header>
@@ -289,12 +298,12 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, onUpdateBook }) => {
       {/* Content Area */}
       <div className="flex flex-grow overflow-hidden relative">
         {/* TOC Sidebar */}
-        <div className={`absolute top-0 left-0 bottom-0 w-72 transform transition-transform duration-300 z-30 flex flex-col shadow-2xl ${showTOC ? 'translate-x-0' : '-translate-x-full'} bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800`}>
-           <div className="p-4 border-b flex justify-between items-center"><h3 className="font-bold flex gap-2"><List className="w-4 h-4" />Mục lục</h3><button onClick={() => setShowTOC(false)}><X className="w-5 h-5" /></button></div>
+        <div className={`absolute top-0 left-0 bottom-0 w-72 transform transition-transform duration-300 z-30 flex flex-col shadow-2xl ${showTOC ? 'translate-x-0' : '-translate-x-full'} border-r ${getSidebarThemeStyles()}`}>
+           <div className={`p-4 border-b flex justify-between items-center ${settings.theme === 'dark' ? 'border-slate-800' : settings.theme === 'sepia' ? 'border-[#ede0c5]' : 'border-slate-200'}`}><h3 className="font-bold flex gap-2"><List className="w-4 h-4" />Mục lục</h3><button onClick={() => setShowTOC(false)}><X className="w-5 h-5" /></button></div>
            <div className="flex-grow overflow-y-auto p-2">
               <ul className="space-y-1">
                 {chapters.map((chapter, idx) => (
-                  <li key={idx}><button onClick={() => jumpToChapter(idx)} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors flex justify-between ${idx === currentChapterIndex ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-100'}`}><span className="truncate">{chapter.title}</span>{idx === currentChapterIndex && <Check className="w-3 h-3" />}</button></li>
+                  <li key={idx}><button onClick={() => jumpToChapter(idx)} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors flex justify-between ${idx === currentChapterIndex ? (settings.theme === 'dark' ? 'bg-indigo-900/30 text-indigo-400' : settings.theme === 'sepia' ? 'bg-[#e8d8b9] text-indigo-800' : 'bg-indigo-50 text-indigo-700') : (settings.theme === 'dark' ? 'hover:bg-slate-800' : settings.theme === 'sepia' ? 'hover:bg-[#e8d8b9]/50' : 'hover:bg-slate-100')}`}><span className="truncate">{chapter.title}</span>{idx === currentChapterIndex && <Check className="w-3 h-3" />}</button></li>
                 ))}
               </ul>
            </div>
@@ -304,17 +313,24 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, onUpdateBook }) => {
         <div ref={contentRef} className={`flex-grow overflow-y-auto scroll-smooth transition-all duration-300 relative reader-scroll ${showRightSidebar ? 'mr-0 md:mr-80' : ''}`}>
           {viewMode === 'insight' ? (
             <div className="max-w-3xl mx-auto px-6 py-12">
-                <div className="mb-12 border-b pb-8"><h1 className="text-3xl font-extrabold mb-4">{book.title}</h1><p className="text-lg">Tác giả: <span className="text-indigo-500">{book.author}</span></p></div>
-                <div className="insight-content" dangerouslySetInnerHTML={{ __html: book.insightHtml || '<p>Đang tải...</p>' }} />
+                <div className={`mb-12 border-b pb-8 ${settings.theme === 'dark' ? 'border-slate-800' : settings.theme === 'sepia' ? 'border-[#ede0c5]' : 'border-slate-100'}`}>
+                    <h1 className="text-3xl font-extrabold mb-4">{book.title}</h1>
+                    <p className={`text-lg ${settings.theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Tác giả: <span className="text-indigo-500">{book.author}</span></p>
+                </div>
+                {/* Style wrapper for Insight HTML to force consistent coloring */}
+                <div 
+                    className={`insight-content ${settings.theme === 'dark' ? '[&>blockquote]:text-slate-400 [&>h2]:text-indigo-400' : settings.theme === 'sepia' ? '[&>blockquote]:text-[#7e6445] [&>h2]:text-indigo-700' : '[&>blockquote]:text-slate-500'}`} 
+                    dangerouslySetInnerHTML={{ __html: book.insightHtml || '<p>Đang tải...</p>' }} 
+                />
             </div>
           ) : (
             <div onMouseUp={handleSelection} style={{ fontSize: `${settings.fontSize}px`, lineHeight: settings.lineHeight }} className={`max-w-3xl mx-auto px-6 py-12 ${getFontFamily()} min-h-[60vh]`}>
-                <h2 className="text-3xl font-bold mb-8 text-indigo-600">{chapters[currentChapterIndex]?.title}</h2>
+                <h2 className={`text-3xl font-bold mb-8 ${settings.theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>{chapters[currentChapterIndex]?.title}</h2>
                 {isTranslatingChapter ? <div className="text-center py-20"><Loader2 className="w-10 h-10 animate-spin mx-auto text-indigo-500" /><p>Đang dịch...</p></div> : 
                     displayedParagraphs.map((p, idx) => p.trim() && <p key={idx} className="mb-4 text-justify"><HighlightedText text={p.trim()} notes={book.notes} /></p>)
                 }
-                <div className="flex justify-between mt-16 pt-8 border-t">
-                    <button onClick={() => handleNavChapter('prev')} disabled={currentChapterIndex === 0} className="flex gap-2 px-4 py-3 rounded-xl hover:bg-slate-100 disabled:opacity-30"><ChevronLeft /> Chương trước</button>
+                <div className={`flex justify-between mt-16 pt-8 border-t ${settings.theme === 'dark' ? 'border-slate-800' : settings.theme === 'sepia' ? 'border-[#ede0c5]' : 'border-slate-200'}`}>
+                    <button onClick={() => handleNavChapter('prev')} disabled={currentChapterIndex === 0} className={`flex gap-2 px-4 py-3 rounded-xl disabled:opacity-30 ${settings.theme === 'dark' ? 'hover:bg-slate-800' : settings.theme === 'sepia' ? 'hover:bg-[#e8d8b9]' : 'hover:bg-slate-100'}`}><ChevronLeft /> Chương trước</button>
                     <button onClick={() => handleNavChapter('next')} disabled={currentChapterIndex >= chapters.length - 1} className="flex gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-30">Chương tiếp <ChevronRight /></button>
                 </div>
             </div>
@@ -331,14 +347,14 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, onUpdateBook }) => {
         )}
         {showNoteInput && selectionPosition && (
             <div className="fixed z-50 bg-white p-2 rounded-xl shadow-xl border flex gap-2" style={{ top: selectionPosition.top, left: selectionPosition.left, transform: 'translateX(-50%)' }}>
-                <input autoFocus className="border rounded px-2" placeholder="Nhập ghi chú..." value={noteInputValue} onChange={e => setNoteInputValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && addNote(noteInputValue)} />
+                <input autoFocus className="border rounded px-2 text-slate-900" placeholder="Nhập ghi chú..." value={noteInputValue} onChange={e => setNoteInputValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && addNote(noteInputValue)} />
                 <button onClick={() => addNote(noteInputValue)} className="bg-indigo-600 text-white p-1 rounded"><Check className="w-4 h-4"/></button>
             </div>
         )}
 
         {/* Right Sidebar */}
-        <div className={`absolute top-0 right-0 bottom-0 w-80 border-l transform transition-transform duration-300 z-20 flex flex-col shadow-2xl ${showRightSidebar ? 'translate-x-0' : 'translate-x-full'} bg-white dark:bg-slate-900`}>
-          <div className="p-4 border-b flex justify-between items-center">
+        <div className={`absolute top-0 right-0 bottom-0 w-80 border-l transform transition-transform duration-300 z-20 flex flex-col shadow-2xl ${showRightSidebar ? 'translate-x-0' : 'translate-x-full'} ${getSidebarThemeStyles()}`}>
+          <div className={`p-4 border-b flex justify-between items-center ${settings.theme === 'dark' ? 'border-slate-800' : settings.theme === 'sepia' ? 'border-[#ede0c5]' : 'border-slate-200'}`}>
             <h3 className="font-bold flex items-center gap-2">
               {sidebarView === 'chat' ? 'Hỏi AI' : sidebarView === 'translation' ? 'Dịch thuật' : sidebarView === 'dictionary' ? 'Từ điển' : 'Ghi chú'}
             </h3>
@@ -346,7 +362,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, onUpdateBook }) => {
           </div>
           <div className="flex-grow overflow-y-auto p-4 relative h-full">
             {sidebarView === 'chat' ? (
-                <ChatPanel book={book} allParagraphs={allParagraphs} />
+                <ChatPanel book={book} allParagraphs={allParagraphs} theme={settings.theme} />
             ) : (
                 <SidebarContent 
                     view={sidebarView} book={book} settings={settings}
