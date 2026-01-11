@@ -75,40 +75,27 @@ export const analyzeBook = async (title: string, author: string, rawText?: strin
 };
 
 export const translateText = async (text: string): Promise<string> => {
-  const key = process.env.AZURE_TRANSLATOR_KEY;
-  const region = process.env.AZURE_TRANSLATOR_REGION;
-  const endpoint = "https://api.cognitive.microsofttranslator.com";
-
-  if (!key || !region) {
-      console.warn("Chưa cấu hình Azure Translator Key/Region trong biến môi trường.");
-      return "Lỗi cấu hình: Thiếu Azure Translator Key hoặc Region.";
-  }
+  if (!text || text.trim().length === 0) return "";
 
   try {
-    const response = await fetch(`${endpoint}/translate?api-version=3.0&to=vi`, {
-      method: 'POST',
-      headers: {
-        'Ocp-Apim-Subscription-Key': key,
-        'Ocp-Apim-Subscription-Region': region,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify([{ 'Text': text }])
+    const prompt = `Translate the following text into natural, fluent Vietnamese. 
+    Maintain the original tone, literary style, and formatting.
+    Do not include any introductory or concluding remarks, just the translation.
+    
+    Text:
+    """
+    ${text}
+    """`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Azure Error: ${response.status} - ${JSON.stringify(errorData)}`);
-    }
-
-    const data = await response.json();
-    if (data && data[0] && data[0].translations && data[0].translations[0]) {
-      return data[0].translations[0].text;
-    }
-    return "Không nhận được dữ liệu dịch từ Azure.";
-
+    return response.text?.trim() || "Không có kết quả dịch.";
   } catch (error: any) {
-    console.error("Azure Translation Error:", error);
-    return `Lỗi dịch (Azure): ${error.message}`;
+    const msg = handleGeminiError(error, "dịch thuật");
+    return `(Lỗi dịch AI: ${msg})`;
   }
 };
 
