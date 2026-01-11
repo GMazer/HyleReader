@@ -283,7 +283,8 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, onUpdateBook }) => {
               <button onClick={() => { setSidebarView('chat'); setShowRightSidebar(true); }} className="p-2 rounded-lg opacity-60 hover:opacity-100" title="Hỏi AI"><MessageCircleQuestion className="w-5 h-5" /></button>
               {viewMode === 'read' && (
                   <>
-                  <button onClick={handleTranslateChapter} className={`p-2 rounded-lg ${isTranslatedMode ? (settings.theme === 'dark' ? 'bg-indigo-900/40 text-indigo-400' : 'bg-indigo-50 text-indigo-600') : 'opacity-60 hover:opacity-100'}`}><Languages className="w-5 h-5" /></button>
+                  {/* Tạm ẩn nút dịch toàn trang */}
+                  {/* <button onClick={handleTranslateChapter} className={`p-2 rounded-lg ${isTranslatedMode ? (settings.theme === 'dark' ? 'bg-indigo-900/40 text-indigo-400' : 'bg-indigo-50 text-indigo-600') : 'opacity-60 hover:opacity-100'}`}><Languages className="w-5 h-5" /></button> */}
                   <button onClick={() => setShowSettings(!showSettings)} className="p-2 rounded-lg opacity-60 hover:opacity-100 settings-btn"><Type className="w-5 h-5" /></button>
                   <button onClick={() => setShowTOC(!showTOC)} className="p-2 rounded-lg opacity-60 hover:opacity-100"><List className="w-5 h-5" /></button>
                   </>
